@@ -1,14 +1,16 @@
 package cz.martinforejt.bit.aes
 
 /**
- * Created by Martin Forejt on 10.05.2020.
+ * Mode encryption or decryption
+ *
+ * Created by Martin Forejt on 11.05.2020.
  * me@martinforejt.cz
  *
  * @author Martin Forejt
  */
 enum class Mode {
 
-    ECB,
-    CBC
+    ENCRYPT,
+    DECRYPT
 
 }
