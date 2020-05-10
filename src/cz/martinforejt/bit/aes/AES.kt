@@ -2,8 +2,6 @@ package cz.martinforejt.bit.aes
 
 import java.io.ByteArrayOutputStream
 import java.util.*
-import kotlin.experimental.and
-import kotlin.experimental.or
 
 /**
  * Created by Martin Forejt on 10.05.2020.
@@ -83,6 +81,11 @@ class AES private constructor(
     )
 
     companion object {
+        /**
+         * size of state matrix (4x4)
+         */
+        private const val STATE_SIZE = 4
+
         fun encrypt(mode: Mode, text: ByteArray, key: ByteArray, iv: ByteArray? = null): ByteArray {
             val aes = AES(mode, key, iv)
             return aes.encrypt(text)
@@ -128,7 +131,7 @@ class AES private constructor(
     private fun encryptECB(text: ByteArray): ByteArray {
         val stream = ByteArrayOutputStream()
         for (i in 0 until text.size step 16) {
-            stream.write(encryptBlock(text.copyOfRange(i, i + 16)))
+            stream.write(encryptBlock(Arrays.copyOfRange(text, i, i + 16)))
         }
         return stream.toByteArray()
     }
@@ -150,13 +153,47 @@ class AES private constructor(
     }
 
     private fun encryptBlock(block: ByteArray): ByteArray {
-        TODO()
+        println("block " + Arrays.toString(block))
+        val out = ByteArray(block.size)
 
+        for (i in 0 until STATE_SIZE) {
+            for (j in 0 until STATE_SIZE) {
+                state[i][j] = block[j * STATE_SIZE + i].toInt() and 0xff
+            }
+        }
+
+        var round = 0
+        addRoundKey(round)
+        printState(0)
+
+        round = 1
+        while (round < r) {
+            subBytes()
+            shiftRows()
+            mixColumns()
+            addRoundKey(round)
+            printState(round)
+            round++
+        }
+        printState(-1)
+        subBytes()
+        shiftRows()
+        addRoundKey(round)
+
+        for (i in 0 until STATE_SIZE) {
+            for (j in 0 until STATE_SIZE) {
+                out[j * STATE_SIZE + i] = (state[i][j] and 0xff).toByte()
+            }
+        }
+        return out
+    }
+
+    private fun printState(s: Int) {
+        println("state #$s" + Arrays.toString(state[0]) + " , " + Arrays.toString(state[1]))
     }
 
     private fun decryptBlock(block: ByteArray): ByteArray {
         TODO()
-
     }
 
     /**
@@ -166,15 +203,15 @@ class AES private constructor(
     private fun keyExpansion() {
         var i = 0
         while (i < n) {
-            w[i] = (key[4 * i].toInt() shl 24) or (key[4 * i + 1].toInt() and 0xFF shl 16) or (key[4 * i + 2].toInt()
-                    and 0xFF shl 8) or (key[4 * i + 3].toInt() and 0xFF)
+            w[i] = (key[4 * i].toInt() shl 24) or (key[4 * i + 1].toInt() and 0xff shl 16) or (key[4 * i + 2].toInt()
+                    and 0xff shl 8) or (key[4 * i + 3].toInt() and 0xff)
             i++
         }
         i = n
         while (i <= 4 * (r + 1) - 1) {
             if (i % n == 0) {
-                val rConVal = rCon[i / n][0] shl 24 or (rCon[i / n][1] and 0xFF shl 16) or
-                        (rCon[i / n][2] and 0xFF shl 8) or (rCon[i / n][3] and 0xFF)
+                val rConVal = rCon[i / n][0] shl 24 or (rCon[i / n][1] and 0xff shl 16) or
+                        (rCon[i / n][2] and 0xff shl 8) or (rCon[i / n][3] and 0xff)
                 w[i] = w[i - n] xor subWord(rotWord(w[i - 1])) xor rConVal
             } else if (n < 6 && (i % n == 4)) {
                 w[i] = w[i - n] xor subWord(w[i - 1])
@@ -185,24 +222,100 @@ class AES private constructor(
         }
     }
 
+    /**
+     * each byte of the state is combined with a byte of the round key using xor
+     *
+     * @param round current round, round key is w[round]
+     */
     private fun addRoundKey(round: Int) {
-        for (i in 0 until state.size) {
-            for (j in 0 until state[0].size) {
-                state[i][j] = state[i][j] xor (w[round * 4 + j] shl (i * 8)).ushr(24)
+        for (i in 0 until STATE_SIZE) {
+            for (j in 0 until STATE_SIZE) {
+                state[i][j] = state[i][j] xor (w[round * STATE_SIZE + j] shl (i * 8)).ushr(24)
             }
         }
     }
 
+    /**
+     * a non-linear substitution step where each byte is replaced with another according to a lookup table
+     */
     private fun subBytes() {
-
+        for (i in 0 until STATE_SIZE) {
+            for (j in 0 until STATE_SIZE) {
+                state[i][j] = subWord(state[i][j]) and 0xff
+            }
+        }
     }
 
+    /**
+     * a transposition step where the last three rows of the state are shifted cyclically a certain number of steps.
+     */
     private fun shiftRows() {
+        // row 1
+        var t1 = state[1][0]
+        for (i in 0 until STATE_SIZE) {
+            state[1][i] = state[1][(i + 1) % STATE_SIZE]
+        }
+        state[1][STATE_SIZE - 1] = t1
+
+        // row2
+        t1 = state[2][0]
+        var t2 = state[2][1]
+        for (i in 0 until STATE_SIZE - 1) {
+            state[2][i] = state[2][(i + 2) % STATE_SIZE]
+        }
+        state[2][STATE_SIZE - 2] = t1
+        state[2][STATE_SIZE - 1] = t2
+
+        // row3
+        t1 = state[3][0]
+        t2 = state[3][1]
+        val t3 = state[3][2]
+        for (i in 0 until STATE_SIZE - 2) {
+            state[3][i] = state[3][(i + 3) % STATE_SIZE]
+        }
+        state[3][STATE_SIZE - 3] = t1
+        state[3][STATE_SIZE - 2] = t2
+        state[3][STATE_SIZE - 1] = t3
+    }
+
+    /**
+     * a linear mixing operation which operates on the columns of the state, combining the four bytes in each column.
+     */
+    private fun mixColumns() {
+        for (c in 0 until STATE_SIZE) {
+            val t0 = gMul(0x02, state[0][c]) xor gMul(0x03, state[1][c]) xor state[2][c] xor state[3][c]
+            val t1 = state[0][c] xor gMul(0x02, state[1][c]) xor gMul(0x03, state[2][c]) xor state[3][c]
+            val t2 = state[0][c] xor state[1][c] xor gMul(0x02, state[2][c]) xor gMul(0x03, state[3][c])
+            val t3 = gMul(0x03, state[0][c]) xor state[1][c] xor state[2][c] xor gMul(0x02, state[3][c])
+
+            state[0][c] = t0
+            state[1][c] = t1
+            state[2][c] = t2
+            state[3][c] = t3
+        }
 
     }
 
-    private fun mixColumns() {
-
+    /**
+     * Multiplies two int in garlois field 2^8
+     *
+     * @param pa
+     * @param pb
+     * @return
+     */
+    private fun gMul(pa: Int, pb: Int): Int {
+        var a = pa
+        var b = pb
+        var res = 0
+        var temp: Int
+        while (a != 0) {
+            if (a and 1 != 0) res = res xor b
+            temp = b and 0x80
+            b = b shl 1
+            if (temp != 0) b = b xor 0x1b
+            a = a and 0xff shr 1
+        }
+        return res
     }
 
     /**

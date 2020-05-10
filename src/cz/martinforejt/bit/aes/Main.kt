@@ -15,9 +15,15 @@ fun main(args: Array<String>) {
     println(params)
 
     val aes = cz.martinforejt.bit.aes.old.AES(params.key.toByteArray())
-    val res = aes.ECB_encrypt(params.text)
+    var res = aes.ECB_encrypt(params.text)
 
-    AES.encrypt(Mode.ECB, "Znám křišťálovou studánku,\nkde nejhlubší je les".toByteArray(), "josefvencasladek".toByteArray())
+    res.forEachIndexed { i, v ->
+        print(String.format("%02x ", v))
+        if ((i + 1) % 16 == 0) println()
+    }
+
+    println("\n")
+    res = AES.encrypt(Mode.ECB, params.text, params.key.toByteArray())
 
     res.forEachIndexed { i, v ->
         print(String.format("%02x ", v))
